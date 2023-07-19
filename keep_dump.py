@@ -10,7 +10,7 @@ import requests
 import time
 
 host = "http://172.16.0.105:8071"
-host = "http://192.168.200.31:8071"
+host = "http://localhost:8071"
 
 
 import logging
