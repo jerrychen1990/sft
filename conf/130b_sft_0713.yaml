@@ -1,0 +1,224 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: chenhao-360-sft-130b-0713
+  namespace: example
+spec:
+  minAvailable: 17
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - name: "main"
+      replicas: 1
+      template:
+        metadata:
+          name: finetune
+        spec:
+          volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 100Gi
+            - name: basemodel
+              hostPath:
+                path: /gpfs02/research/model/glm-130b-pretrain
+                type: Directory
+            - name: rawdataset
+              hostPath:
+                path: /gpfs02/research/data
+                type: Directory
+            - name: output
+              hostPath:
+                path: /gpfs02/research/experiment/chenhao/360-sft-130b-0713
+                type: DirectoryOrCreate
+          containers:
+            - name: main
+              image: gy-a100-registry.bigmodel.cn/maas/bmm-chatglm-130b:train-20230706101127
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                capabilities:
+                  add:
+                  - IPC_LOCK
+              volumeMounts:
+                - name: dshm
+                  mountPath: /dev/shm
+                - name: basemodel
+                  mountPath: /data/basemodel
+                - name: rawdataset
+                  mountPath: /data/rawdataset
+                - name: output
+                  mountPath: /data/output
+              env:
+                - name: ENV_RAW_DATASET_PATH
+                  value: /data/rawdataset/SFT/processed/360sft_30k_v1.jsonl
+                - name: ENV_INPUT_CKPT_PATH
+                  value: /data/basemodel
+                - name: ENV_INPUT_DATASET_PATH
+                  value: /data/output/dataset/train
+                - name: ENV_OUTPUT_BASE_PATH
+                  value: /data/output
+                - name: ENV_OUTPUT_CKPT_PATH
+                  value: /data/output/ckpts
+                - name: ENV_OUTPUT_TB_PATH
+                  value: /data/output/tb
+                - name: ENV_OUTPUT_LOG_PATH
+                  value: /data/output/log
+                - name: ENV_CKPT_SAVE_INTERVAL
+                  value: "500"
+                - name: ENV_EVAL_INTERVAL
+                  value: "100"
+                - name: ENV_NUM_WORKERS
+                  value: "16"
+                - name: ENV_TRAIN_TOKENS
+                  value: "60000000"
+                - name: ENV_GLOBAL_BATCH_SIZE
+                  value: "16"
+                - name: MIN_LOSS_SCALE
+                  value: "0.01"
+                - name: LR
+                  value: "4e-6"
+
+              args:
+                - --hostenvs
+                - VC_MAIN_HOSTS
+                - VC_WORKER_HOSTS
+                # - --commands
+                # - "python3 data/process_sft.py --data_path ${ENV_RAW_DATASET_PATH} --output_dir ${ENV_INPUT_DATASET_PATH}/train"
+                # - "bash scripts/submit_gpu.sh configs/glm-130b/glm-130b-sft.sh"
+              resources:
+                requests:
+                  nvidia.com/gpu: 8
+                limits:
+                  nvidia.com/gpu: 8
+                  rdma/hca_shared_devices_a: 1
+          restartPolicy: OnFailure
+    - name: "worker"
+      replicas: 15
+      template:
+        metadata:
+          name: finetune
+        spec:
+          volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 100Gi
+            - name: basemodel
+              hostPath:
+                path: /gpfs02/research/model/glm-130b-pretrain
+                type: Directory
+            - name: rawdataset
+              hostPath:
+                path: /gpfs02/research/data
+                type: Directory
+            - name: output
+              hostPath:
+                path: /gpfs02/research/experiment/chenhao/360-sft-130b-0713
+                type: DirectoryOrCreate
+          containers:
+            - name: worker
+              image: gy-a100-registry.bigmodel.cn/maas/bmm-chatglm-130b:train-20230706101127
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                capabilities:
+                  add:
+                  - IPC_LOCK
+              volumeMounts:
+                - name: dshm
+                  mountPath: /dev/shm
+                - name: basemodel
+                  mountPath: /data/basemodel
+                - name: rawdataset
+                  mountPath: /data/rawdataset
+                - name: output
+                  mountPath: /data/output
+              env:
+                - name: ENV_INPUT_CKPT_PATH
+                  value: /data/basemodel
+                - name: ENV_INPUT_DATASET_PATH
+                  value: /data/output/dataset/train
+                - name: ENV_OUTPUT_BASE_PATH
+                  value: /data/output
+                - name: ENV_OUTPUT_CKPT_PATH
+                  value: /data/output/ckpts
+                - name: ENV_OUTPUT_TB_PATH
+                  value: /data/output/tb
+                - name: ENV_OUTPUT_LOG_PATH
+                  value: /data/output/log
+                - name: ENV_CKPT_SAVE_INTERVAL
+                  value: "500"
+                - name: ENV_EVAL_INTERVAL
+                  value: "100"
+                - name: ENV_NUM_WORKERS
+                  value: "16"
+                - name: ENV_TRAIN_TOKENS
+                  value: "60000000"
+                - name: ENV_GLOBAL_BATCH_SIZE
+                  value: "16"
+                - name: MIN_LOSS_SCALE
+                  value: "0.01"
+                - name: LR
+                  value: "4e-6"
+
+              command: ["/bin/sh"]
+              args: ["-c", "mkdir -p /var/run/sshd && /usr/sbin/sshd -D"]
+              resources:
+                requests:
+                  nvidia.com/gpu: 8
+                limits:
+                  nvidia.com/gpu: 8
+                  rdma/hca_shared_devices_a: 1
+          restartPolicy: OnFailure
+    - name: "agent"
+      replicas: 1
+      template:
+        metadata:
+          name: finetune
+        spec:
+          volumes:
+            - name: output
+              hostPath:
+                path: /gpfs02/research/experiment/chenhao/360-sft-130b-0713
+                type: DirectoryOrCreate
+          containers:
+            - name: agent
+              image: nginx
+              imagePullPolicy: IfNotPresent
+              volumeMounts:
+                - name: output
+                  mountPath: /data/output
+              env:
+                - name: ENV_OUTPUT_BASE_PATH
+                  value: /data/output
+                - name: ENV_OUTPUT_CKPT_PATH
+                  value: /data/output/ckpts
+                - name: ENV_OUTPUT_TB_PATH
+                  value: /data/output/tb
+                - name: ENV_OUTPUT_LOG_PATH
+                  value: /data/output/log
+                - name: ENV_CKPT_SAVE_INTERVAL
+                  value: "500"
+                - name: ENV_EVAL_INTERVAL
+                  value: "100"
+                - name: ENV_NUM_WORKERS
+                  value: "16"
+                - name: ENV_TRAIN_TOKENS
+                  value: "60000000"
+                - name: ENV_GLOBAL_BATCH_SIZE
+                  value: "16"
+                - name: MIN_LOSS_SCALE
+                  value: "0.01"
+                - name: LR
+                  value: "4e-6"
+              resources:
+                requests:
+                  cpu: "4"
+          restartPolicy: OnFailure

@@ -1,0 +1,86 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: sft-test-6b-v4
+  namespace: example
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - name: "main"
+      replicas: 1
+      template:
+        metadata:
+          name: finetune
+        spec:
+          volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 100Gi
+            - name: basemodel
+              hostPath:
+                path: /gpfs02/bmm-dmz/system/chatglm-6b-v1.1
+                type: Directory
+            - name: rawdataset
+              hostPath:
+                path: /gpfs02/bmm-dmz/user-data/chenhao/data
+                type: Directory
+            - name: output
+              hostPath:
+                path: /gpfs02/bmm-dmz/user-data/chenhao/experiment
+                type: DirectoryOrCreate
+          containers:
+            - name: main
+              image: gy-a100-registry.bigmodel.cn/maas/bmm-chatglm-6b:train-20230707020019
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                capabilities:
+                  add:
+                  - IPC_LOCK
+              volumeMounts:
+                - name: dshm
+                  mountPath: /dev/shm
+                - name: basemodel
+                  mountPath: /data/basemodel
+                - name: rawdataset
+                  mountPath: /data/rawdataset
+                - name: output
+                  mountPath: /data/output
+              env:
+                - name: ENV_INPUT_CKPT_PATH
+                  value: /data/basemodel
+                - name: ENV_RAW_DATASET_PATH
+                  value: /data/rawdataset/360_sft_data/data_part1.json
+                - name: ENV_INPUT_DATASET_PATH
+                  value: /data/output/360_sft_data/data_part1.json
+                - name: ENV_OUTPUT_BASE_PATH
+                  value: /data/output
+                - name: ENV_OUTPUT_CKPT_PATH
+                  value: /data/output/ckpts
+                - name: ENV_OUTPUT_TB_PATH
+                  value: /data/output/tb
+                - name: ENV_OUTPUT_LOG_PATH
+                  value: /data/output/log
+                - name: ENV_TRAIN_TOKENS
+                  value: "10000"
+                - name: ENV_MICRO_BATCH_SIZE
+                  value: "2"
+              command: ["/bin/sh"]
+              args: ["-c", "sleep 3600"]
+              resources:
+                requests:
+                  nvidia.com/gpu: 8
+                limits:
+                  nvidia.com/gpu: 8
+                  rdma/hca_shared_devices_a: 1
+          restartPolicy: OnFailure
