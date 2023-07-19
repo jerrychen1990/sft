@@ -13,8 +13,8 @@
 .idea/**/shelf
 
 ./data
-
 data/
+
 
 # AWS User-specific
 .idea/**/aws.xml
@@ -61,6 +61,8 @@ cmake-build-*/
 out/
 
 dota/
+
+eval_datag
 
 # mpeltonen/sbt-idea plugin
 .idea_modules/
