@@ -24,6 +24,11 @@ def try_load(p):
 
 
 def is_valid(item, show=False, no_gpt=True):
+    input = item.get("input")
+    target = item.get("target")
+    if not input or not target:
+        return False
+
     input_list = icetk.encode(item["input"])
     target_list = icetk.encode(item["target"])
     rs = True
@@ -79,6 +84,8 @@ def extract_word_num(text, pattern="至少(\d+)字|不少于(\d+)字"):
     return None
 
 
+
+
 def match_word_limit(item):
 
     tgt_len = len(item["target"])
@@ -94,21 +101,18 @@ def match_word_limit(item):
         return True
     return False
 
-    return re.search(pt1, ipt) is not None
-
-
-def parse_share_gpt(item):
-    rs = []
-    pre = ""
-    rd = 1
-    for idx, ele in enumerate(item["conversations"]):
-        if ele["from"] == "human":
-            pre = pre + f"##第 {rd} 轮##\n\n问:{ele['value']}\n\n答:"
-        else:
-            rs.append(dict(input=pre.strip(), target=ele["value"], source="share-gpt"))
-            pre = pre + ele["value"] + "\n\n"
-            rd += 1
-    return rs
+# def parse_share_gpt(item):
+#     rs = []
+#     pre = ""
+#     rd = 1
+#     for idx, ele in enumerate(item["conversations"]):
+#         if ele["from"] == "human":
+#             pre = pre + f"##第 {rd} 轮##\n\n问:{ele['value']}\n\n答:"
+#         else:
+#             rs.append(dict(input=pre.strip(), target=ele["value"], source="share-gpt"))
+#             pre = pre + ele["value"] + "\n\n"
+#             rd += 1
+#     return rs
 
 def is_chinese(strs, pct=0.4):
     ch_num = 0
@@ -186,7 +190,7 @@ def _get_sentences_multiturn_chat(instruction):
         rs.append(cur_sentence.strip())
     return rs
 
-def parse_multiturn_chat(item):
+def parse_belle_multiturn_chat(item):
     ipt = (item["instruction"]).strip()
     sentences = _get_sentences_multiturn_chat(ipt)
     sentences += [item["output"].strip()]
@@ -243,6 +247,28 @@ def contain_gpt(t):
     return "GPT" in t or "OPENAI" in t
 
 
+def parse_tsinghua_human_label(item):
+
+    rs = []
+    source = "tsinghua_human_label"
+
+    history = item["history"]+[dict(prompt=item["prompt"], response=item["response"])]
+    # print(history)
+    # print(len(history))
+    if len(history) > 1:
+        source += "_multichat"
+        pre = ""
+        for idx, ele in enumerate(item["history"]):
+            pre += f"##第 {idx+1} 轮##\n\n问:{ele['prompt']}\n\n答:"
+            ans = ele["response"]
+            rs.append(dict(input=pre, target=ans, source= source))
+            pre += ans + "\n\n"
+    else:
+        source += "_qa"
+        rs = [dict(input=history[0]["prompt"], target=history[0]["response"], source=source)]
+    return rs
+
+
 def parse_share_gpt(item):
     rs = []
     cov = item["conversations"]
@@ -281,6 +307,35 @@ def process_moss_qa(item):
         pre = pmt + ans + "\n\n"
 
     return rs
+
+
+def process_moss_multi_chat(item, do_multi_chat=True):
+    # item
+    chats = item["chat"]
+    # chats
+    rs = []
+    pre =""
+
+    for idx, (t,ele) in enumerate(chats.items()):
+        # ele
+        human = ele["Human"].replace("<|Human|>: ","").replace("<eoh>","").strip()
+        moss = ele["MOSS"].replace("<|MOSS|>: ","").replace("<eom>","").strip()
+        human, moss
+        if not do_multi_chat:
+            rs.append(dict(input=human, target=moss, source="moss_qa"))
+        else:
+            q = \
+    f'''##第 {idx+1} 轮##
+    问:{human}
+
+    答:
+    ''' 
+            a = moss
+            pre = pre + "\n\n" + q
+            rs.append(dict(input=pre.strip(), target=a.strip(), source="moss_multi_chat"))
+            pre += a
+    return rs
+
 
 
 def parse_data(data, func):

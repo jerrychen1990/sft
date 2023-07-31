@@ -1,0 +1,141 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: chenhao-360-sft-130b-example
+  namespace: research
+spec:
+  minAvailable: 9
+  schedulerName: volcano
+  policies:
+    - event: PodFailed
+      action: TerminateJob
+    - event: PodEvicted
+      action: TerminateJob
+    - event: TaskFailed
+      action: TerminateJob
+    - event: TaskCompleted
+      action: CompleteJob
+
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - name: "main"
+      replicas: 1
+      template:
+        metadata:
+          name: finetune
+        spec:
+          volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 100Gi
+          containers:
+            - name: main
+              image: a100-harbor.bigmodel.cn/maas/bmm-chatglm-130b:train-20230720175103
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                capabilities:
+                  add:
+                  - IPC_LOCK
+              volumeMounts: []
+              env:
+                - name: ENV_INPUT_CKPT_PATH
+                  value: /data/basemodel
+                - name: ENV_INPUT_DATASET_PATH
+                  value: /data/output/dataset
+                - name: ENV_OUTPUT_BASE_PATH
+                  value: /data/output
+                - name: ENV_OUTPUT_CKPT_PATH
+                  value: /data/output/ckpts
+                - name: ENV_OUTPUT_TB_PATH
+                  value: /data/output/tb
+                - name: ENV_OUTPUT_LOG_PATH
+                  value: /data/output/log
+              args:
+                - --hostenvs
+                - VC_MAIN_HOSTS
+                - VC_WORKER_HOSTS
+                # - --commands
+                # - "python3 data/process_sft.py --data_path ${ENV_RAW_DATASET_PATH} --output_dir ${ENV_INPUT_DATASET_PATH}/train"
+                # - "bash scripts/submit_gpu.sh configs/glm-130b/glm-130b-sft.sh"
+              resources:
+                requests:
+                  nvidia.com/gpu: 8
+                  rdma/shared_ibs: 1
+                limits:
+                  nvidia.com/gpu: 8
+                  rdma/shared_ibs: 1
+          restartPolicy: OnFailure
+    - name: "worker"
+      replicas: 7
+      template:
+        metadata:
+          name: finetune
+        spec:
+          volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 100Gi
+          containers:
+            - name: worker
+              image: a100-harbor.bigmodel.cn/maas/bmm-chatglm-130b:train-20230720175103
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                capabilities:
+                  add:
+                  - IPC_LOCK
+              volumeMounts: []
+              env:
+                - name: ENV_INPUT_CKPT_PATH
+                  value: /data/basemodel
+                - name: ENV_INPUT_DATASET_PATH
+                  value: /data/output/dataset
+                - name: ENV_OUTPUT_BASE_PATH
+                  value: /data/output
+                - name: ENV_OUTPUT_CKPT_PATH
+                  value: /data/output/ckpts
+                - name: ENV_OUTPUT_TB_PATH
+                  value: /data/output/tb
+                - name: ENV_OUTPUT_LOG_PATH
+                  value: /data/output/log
+              command: ["/bin/sh"]
+              args: ["-c", "mkdir -p /var/run/sshd && /usr/sbin/sshd -D"]
+              resources:
+                requests:
+                  nvidia.com/gpu: 8
+                  rdma/shared_ibs: 1
+                limits:
+                  nvidia.com/gpu: 8
+                  rdma/shared_ibs: 1
+          restartPolicy: OnFailure
+    - name: "agent"
+      replicas: 1
+      template:
+        metadata:
+          name: finetune
+        spec:
+          volumes: []
+          containers:
+            - name: agent
+              image: nginx
+              imagePullPolicy: IfNotPresent
+              volumeMounts: []
+              env:
+                - name: ENV_OUTPUT_BASE_PATH
+                  value: /data/output
+                - name: ENV_OUTPUT_CKPT_PATH
+                  value: /data/output/ckpts
+                - name: ENV_OUTPUT_TB_PATH
+                  value: /data/output/tb
+                - name: ENV_OUTPUT_LOG_PATH
+                  value: /data/output/log
+              resources:
+                requests:
+                  cpu: "4"
+          restartPolicy: OnFailure

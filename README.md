@@ -8,7 +8,7 @@ pip install -r requirements.txt
 ```shell
 python data_service.py
 ```
-- 运行定时脚本，定时将标好的数据导出到./data/parsed/labeled.jsonl
+- 运行定时脚本，每隔60s将标好的数据导出到./data/parsed/labeled.jsonl
 - 运行WebUI
 ```shell
 streamlit run labeling_app.py

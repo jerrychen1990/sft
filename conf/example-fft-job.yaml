@@ -1,10 +1,10 @@
 apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
-  name: chenhao-360-sft-130b-0712-e2
-  namespace: example
+  name: example-fft-job
+  namespace: research
 spec:
-  minAvailable: 17
+  minAvailable: 9
   schedulerName: volcano
   policies:
     - event: PodEvicted
@@ -29,19 +29,19 @@ spec:
                 sizeLimit: 100Gi
             - name: basemodel
               hostPath:
-                path: /gpfs02/research/model/global_step500
+                path: /home/bmm-system/data/system/models/chatglm-130b-v0.8.6-raw
                 type: Directory
             - name: rawdataset
               hostPath:
-                path: /gpfs02/research/data
+                path: /data/glusterfs/liusong/dataset-files
                 type: Directory
             - name: output
               hostPath:
-                path: /gpfs02/research/experiment/chenhao/360-sft-130b-0712-e2
+                path: /data/glusterfs/liusong/experiments/example-01/
                 type: DirectoryOrCreate
           containers:
             - name: main
-              image: gy-a100-registry.bigmodel.cn/maas/bmm-chatglm-130b:train-20230706101127
+              image: a100-harbor.bigmodel.cn/maas/bmm-chatglm-130b:train-20230720175103
               imagePullPolicy: IfNotPresent
               securityContext:
                 capabilities:
@@ -58,11 +58,11 @@ spec:
                   mountPath: /data/output
               env:
                 - name: ENV_RAW_DATASET_PATH
-                  value: /data/rawdataset/SFT/processed/360sft_27k_v1.jsonl
+                  value: /data/rawdataset/example/data.json
                 - name: ENV_INPUT_CKPT_PATH
                   value: /data/basemodel
                 - name: ENV_INPUT_DATASET_PATH
-                  value: /data/output/dataset/train
+                  value: /data/output/dataset
                 - name: ENV_OUTPUT_BASE_PATH
                   value: /data/output
                 - name: ENV_OUTPUT_CKPT_PATH
@@ -71,37 +71,29 @@ spec:
                   value: /data/output/tb
                 - name: ENV_OUTPUT_LOG_PATH
                   value: /data/output/log
-                - name: ENV_CKPT_SAVE_INTERVAL
-                  value: "400"
-                - name: ENV_EVAL_INTERVAL
-                  value: "200"
                 - name: ENV_NUM_WORKERS
-                  value: "16"
+                  value: "8"
                 - name: ENV_TRAIN_TOKENS
-                  value: "54000000"
+                  value: "10000000"
                 - name: ENV_GLOBAL_BATCH_SIZE
-                  value: "32"
-                - name: ENV_MIN_LOSS_SCALE
-                  value: "0.01"
-                - name: ENV_LR
-                  value: "4e-6"
-
+                  value: "64"
               args:
                 - --hostenvs
                 - VC_MAIN_HOSTS
                 - VC_WORKER_HOSTS
-                # - --commands
-                # - "python3 data/process_sft.py --data_path ${ENV_RAW_DATASET_PATH} --output_dir ${ENV_INPUT_DATASET_PATH}/train"
-                # - "bash scripts/submit_gpu.sh configs/glm-130b/glm-130b-sft.sh"
+                - --commands
+                - "python3 data/process_sft.py --data_path ${ENV_RAW_DATASET_PATH} --output_dir ${ENV_INPUT_DATASET_PATH}/train"
+                - "bash scripts/submit_gpu.sh configs/glm-130b/glm-130b-sft.sh"
               resources:
                 requests:
                   nvidia.com/gpu: 8
+                  rdma/shared_ibs: 1
                 limits:
                   nvidia.com/gpu: 8
-                  rdma/hca_shared_devices_a: 1
+                  rdma/shared_ibs: 1
           restartPolicy: OnFailure
     - name: "worker"
-      replicas: 15
+      replicas: 7
       template:
         metadata:
           name: finetune
@@ -113,19 +105,19 @@ spec:
                 sizeLimit: 100Gi
             - name: basemodel
               hostPath:
-                path: /gpfs02/research/model/global_step500
+                path: /home/bmm-system/data/system/models/chatglm-130b-v0.8.6-raw
                 type: Directory
             - name: rawdataset
               hostPath:
-                path: /gpfs02/research/data
+                path: /data/glusterfs/liusong/dataset-files
                 type: Directory
             - name: output
               hostPath:
-                path: /gpfs02/research/experiment/chenhao/360-sft-130b-0712-e2
+                path: /data/glusterfs/liusong/experiments/example-01/
                 type: DirectoryOrCreate
           containers:
             - name: worker
-              image: gy-a100-registry.bigmodel.cn/maas/bmm-chatglm-130b:train-20230706101127
+              image: a100-harbor.bigmodel.cn/maas/bmm-chatglm-130b:train-20230720175103
               imagePullPolicy: IfNotPresent
               securityContext:
                 capabilities:
@@ -144,7 +136,7 @@ spec:
                 - name: ENV_INPUT_CKPT_PATH
                   value: /data/basemodel
                 - name: ENV_INPUT_DATASET_PATH
-                  value: /data/output/dataset/train
+                  value: /data/output/dataset
                 - name: ENV_OUTPUT_BASE_PATH
                   value: /data/output
                 - name: ENV_OUTPUT_CKPT_PATH
@@ -153,29 +145,21 @@ spec:
                   value: /data/output/tb
                 - name: ENV_OUTPUT_LOG_PATH
                   value: /data/output/log
-                - name: ENV_CKPT_SAVE_INTERVAL
-                  value: "400"
-                - name: ENV_EVAL_INTERVAL
-                  value: "200"
                 - name: ENV_NUM_WORKERS
-                  value: "16"
+                  value: "8"
                 - name: ENV_TRAIN_TOKENS
-                  value: "54000000"
+                  value: "10000000"
                 - name: ENV_GLOBAL_BATCH_SIZE
-                  value: "32"
-                - name: ENV_MIN_LOSS_SCALE
-                  value: "0.01"
-                - name: ENV_LR
-                  value: "4e-6"
-
+                  value: "64"
               command: ["/bin/sh"]
               args: ["-c", "mkdir -p /var/run/sshd && /usr/sbin/sshd -D"]
               resources:
                 requests:
                   nvidia.com/gpu: 8
+                  rdma/shared_ibs: 1
                 limits:
                   nvidia.com/gpu: 8
-                  rdma/hca_shared_devices_a: 1
+                  rdma/shared_ibs: 1
           restartPolicy: OnFailure
     - name: "agent"
       replicas: 1
@@ -186,7 +170,7 @@ spec:
           volumes:
             - name: output
               hostPath:
-                path: /gpfs02/research/experiment/chenhao/360-sft-130b-0712
+                path: /data/glusterfs/liusong/experiments/example-01/
                 type: DirectoryOrCreate
           containers:
             - name: agent
@@ -204,20 +188,6 @@ spec:
                   value: /data/output/tb
                 - name: ENV_OUTPUT_LOG_PATH
                   value: /data/output/log
-                - name: ENV_CKPT_SAVE_INTERVAL
-                  value: "300"
-                - name: ENV_EVAL_INTERVAL
-                  value: "300"
-                - name: ENV_NUM_WORKERS
-                  value: "16"
-                - name: ENV_TRAIN_TOKENS
-                  value: "54000000"
-                - name: ENV_GLOBAL_BATCH_SIZE
-                  value: "16"
-                - name: ENV_MIN_LOSS_SCALE
-                  value: "0.01"
-                - name: ENV_LR
-                  value: "4e-6"
               resources:
                 requests:
                   cpu: "4"

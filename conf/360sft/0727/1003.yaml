@@ -1,0 +1,239 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: chenhao-360-sft-130b-07271003
+  namespace: research
+spec:
+  maxRetry: 5
+  minAvailable: 9
+  plugins:
+    env: []
+    ssh: []
+    svc: []
+  policies:
+  - action: TerminateJob
+    event: PodFailed
+  - action: TerminateJob
+    event: PodEvicted
+  - action: TerminateJob
+    event: TaskFailed
+  - action: CompleteJob
+    event: TaskCompleted
+  queue: default
+  schedulerName: volcano
+  tasks:
+  - name: main
+    replicas: 1
+    template:
+      metadata:
+        name: finetune
+      spec:
+        containers:
+        - args:
+          - --hostenvs
+          - '- VC_MAIN_HOSTS'
+          - '- VC_WORKER_HOSTS'
+          - --commands
+          - cd /data/project
+          - sh scripts/sft.sh
+          env:
+          - name: ENV_INPUT_CKPT_PATH
+            value: /data/basemodel
+          - name: ENV_INPUT_DATASET_PATH
+            value: /data/output/dataset
+          - name: ENV_OUTPUT_BASE_PATH
+            value: /data/output
+          - name: ENV_OUTPUT_CKPT_PATH
+            value: /data/output/ckpts
+          - name: ENV_OUTPUT_TB_PATH
+            value: /data/output/tb
+          - name: ENV_OUTPUT_LOG_PATH
+            value: /data/output/log
+          - name: ENV_LR
+            value: '1.0e-5'
+          - name: ENV_CKPT_SAVE_INTERVAL
+            value: '100'
+          - name: ENV_RAW_DATASET_PATH
+            value: /data/rawdataset/360sft_30k.jsonl
+          - name: ENV_EVAL_INTERVAL
+            value: '150'
+          - name: ENV_MIN_LOSS_SCALE
+            value: '0.01'
+          - name: ENV_NUM_WORKERS
+            value: '8'
+          - name: ENV_TRAIN_TOKENS
+            value: '76800000'
+          - name: ENV_GLOBAL_BATCH_SIZE
+            value: '128'
+          image: a100-harbor.bigmodel.cn/maas/bmm-chatglm-130b:train-20230720175103
+          imagePullPolicy: IfNotPresent
+          name: main
+          resources:
+            limits:
+              nvidia.com/gpu: 8
+              rdma/shared_ibs: 1
+            requests:
+              nvidia.com/gpu: 8
+              rdma/shared_ibs: 1
+          securityContext:
+            capabilities:
+              add:
+              - IPC_LOCK
+          volumeMounts:
+          - mountPath: /data/basemodel
+            name: basemodel
+          - mountPath: /data/rawdataset
+            name: rawdataset
+          - mountPath: /data/output
+            name: output
+          - mountPath: data/project
+            name: project
+        restartPolicy: OnFailure
+        volumes:
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 100Gi
+          name: dshm
+        - hostPath:
+            path: /data/glusterfs/chenhao/experiment/360-sft-130b-07261541/ckpts
+            type: Directory
+          name: basemodel
+        - hostPath:
+            path: /data/glusterfs/chenhao/workspace/sft/data
+            type: Directory
+          name: rawdataset
+        - hostPath:
+            path: /data/glusterfs/chenhao/workspace/bmm-ft-chatglm-130b
+            type: Directory
+          name: project
+        - hostPath:
+            path: /data/glusterfs/chenhao/experiment/360-sft-130b-07271003
+            type: DirectoryOrCreate
+          name: output
+  - name: worker
+    replicas: 7
+    template:
+      metadata:
+        name: finetune
+      spec:
+        containers:
+        - args:
+          - -c
+          - mkdir -p /var/run/sshd && /usr/sbin/sshd -D
+          command:
+          - /bin/sh
+          env:
+          - name: ENV_INPUT_CKPT_PATH
+            value: /data/basemodel
+          - name: ENV_INPUT_DATASET_PATH
+            value: /data/output/dataset
+          - name: ENV_OUTPUT_BASE_PATH
+            value: /data/output
+          - name: ENV_OUTPUT_CKPT_PATH
+            value: /data/output/ckpts
+          - name: ENV_OUTPUT_TB_PATH
+            value: /data/output/tb
+          - name: ENV_OUTPUT_LOG_PATH
+            value: /data/output/log
+          - name: ENV_LR
+            value: '1.0e-5'
+          - name: ENV_CKPT_SAVE_INTERVAL
+            value: '100'
+          - name: ENV_RAW_DATASET_PATH
+            value: /data/rawdataset/360sft_30k.jsonl
+          - name: ENV_EVAL_INTERVAL
+            value: '150'
+          - name: ENV_MIN_LOSS_SCALE
+            value: '0.01'
+          - name: ENV_NUM_WORKERS
+            value: '8'
+          - name: ENV_TRAIN_TOKENS
+            value: '76800000'
+          - name: ENV_GLOBAL_BATCH_SIZE
+            value: '128'
+          image: a100-harbor.bigmodel.cn/maas/bmm-chatglm-130b:train-20230720175103
+          imagePullPolicy: IfNotPresent
+          name: worker
+          resources:
+            limits:
+              nvidia.com/gpu: 8
+              rdma/shared_ibs: 1
+            requests:
+              nvidia.com/gpu: 8
+              rdma/shared_ibs: 1
+          securityContext:
+            capabilities:
+              add:
+              - IPC_LOCK
+          volumeMounts:
+          - mountPath: /data/basemodel
+            name: basemodel
+          - mountPath: /data/output
+            name: output
+          - mountPath: data/project
+            name: project
+        restartPolicy: OnFailure
+        volumes:
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 100Gi
+          name: dshm
+        - hostPath:
+            path: /data/glusterfs/chenhao/experiment/360-sft-130b-07261541/ckpts
+            type: Directory
+          name: basemodel
+        - hostPath:
+            path: /data/glusterfs/chenhao/workspace/bmm-ft-chatglm-130b
+            type: Directory
+          name: project
+        - hostPath:
+            path: /data/glusterfs/chenhao/experiment/360-sft-130b-07271003
+            type: DirectoryOrCreate
+          name: output
+  - name: agent
+    replicas: 1
+    template:
+      metadata:
+        name: finetune
+      spec:
+        containers:
+        - env:
+          - name: ENV_OUTPUT_BASE_PATH
+            value: /data/output
+          - name: ENV_OUTPUT_CKPT_PATH
+            value: /data/output/ckpts
+          - name: ENV_OUTPUT_TB_PATH
+            value: /data/output/tb
+          - name: ENV_OUTPUT_LOG_PATH
+            value: /data/output/log
+          - name: ENV_LR
+            value: '1.0e-5'
+          - name: ENV_CKPT_SAVE_INTERVAL
+            value: '100'
+          - name: ENV_RAW_DATASET_PATH
+            value: /data/rawdataset/360sft_30k.jsonl
+          - name: ENV_EVAL_INTERVAL
+            value: '150'
+          - name: ENV_MIN_LOSS_SCALE
+            value: '0.01'
+          - name: ENV_NUM_WORKERS
+            value: '8'
+          - name: ENV_TRAIN_TOKENS
+            value: '76800000'
+          - name: ENV_GLOBAL_BATCH_SIZE
+            value: '128'
+          image: a100-harbor.bigmodel.cn/maas/bmm-chatglm-130b:train-20230720175103
+          imagePullPolicy: IfNotPresent
+          name: agent
+          resources:
+            requests:
+              cpu: '4'
+          volumeMounts:
+          - mountPath: /data/output
+            name: output
+        restartPolicy: OnFailure
+        volumes:
+        - hostPath:
+            path: /data/glusterfs/chenhao/experiment/360-sft-130b-07271003
+            type: DirectoryOrCreate
+          name: output

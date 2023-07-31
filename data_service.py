@@ -39,7 +39,7 @@ def _reload_data():
                   "/gpfs02/research/data/SFT/processed/chat_4k.jsonl",
                   "/gpfs02/research/data/SFT/processed/gen_wordlimit_3k.jsonl"]
 
-    data_paths = ["data/parsed/to_label.jsonl"]
+    data_paths = ["data/parsed/to_label_part1.jsonl"]
     data = []
     for data_path in data_paths:
         tmp = jload_lines(data_path)
